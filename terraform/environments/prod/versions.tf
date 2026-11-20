@@ -1,6 +1,13 @@
 terraform {
   required_version = ">= 1.7.0"
-  backend "s3" {}
+  backend "s3" {
+    bucket       = "lyken-terraform-state-frontend"
+    key          = "lyken/prod/terraform.tfstate"
+    region       = "ap-southeast-2"
+    encrypt      = true
+    use_lockfile = true
+    profile      = "raj"
+  }
   required_providers {
     aws = {
       source  = "hashicorp/aws"
