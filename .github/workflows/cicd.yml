@@ -71,13 +71,13 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Terraform init
         working-directory: terraform/environments/prod
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           terraform init \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
@@ -89,7 +89,7 @@ jobs:
       - name: Terraform apply
         working-directory: terraform/environments/prod
         env:
-          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_aws_region: ${{ secrets.AWS_REGION }}
           TF_VAR_ses_from_email: ${{ vars.SES_FROM_EMAIL }}
           TF_VAR_notification_to_email: ${{ vars.NOTIFICATION_TO_EMAIL }}
         run: terraform apply -auto-approve
