@@ -6,7 +6,7 @@ terraform {
     region       = "ap-southeast-2"
     encrypt      = true
     use_lockfile = true
-    # profile      = "raj"
+
   }
   required_providers {
     aws = {
