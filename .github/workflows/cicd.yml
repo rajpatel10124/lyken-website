@@ -196,6 +196,11 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+      - name: Debug AWS profile
+        run: |
+          echo "AWS_PROFILE=${AWS_PROFILE:-not set}"
+          echo "AWS_DEFAULT_PROFILE=${AWS_DEFAULT_PROFILE:-not set}"
+          aws sts get-caller-identity
 
       - name: Check required configuration
         env:
