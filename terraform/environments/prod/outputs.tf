@@ -1,0 +1,9 @@
+output "website_url" { value = "https://${aws_cloudfront_distribution.website.domain_name}" }
+output "website_bucket_name" { value = aws_s3_bucket.website.bucket }
+output "cloudfront_distribution_id" { value = aws_cloudfront_distribution.website.id }
+output "contact_api_endpoint_direct" { value = "${aws_apigatewayv2_api.contact.api_endpoint}/api/contact" }
+output "event_bus_name" { value = aws_cloudwatch_event_bus.contact.name }
+output "notification_queue_url" { value = aws_sqs_queue.notification.url }
+output "notification_dlq_url" { value = aws_sqs_queue.notification_dlq.url }
+output "submit_lambda_name" { value = aws_lambda_function.submit.function_name }
+output "worker_lambda_name" { value = aws_lambda_function.worker.function_name }

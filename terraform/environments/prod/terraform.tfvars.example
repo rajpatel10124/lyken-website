@@ -1,0 +1,10 @@
+aws_region              = "ap-southeast-2"
+project_name            = "lyken"
+environment             = "prod"
+ses_from_email          = "verified-sender@example.com"
+notification_to_email   = "rajptl244@gmail.com"
+lambda_log_retention_days = 14
+api_throttle_rate       = 2
+api_throttle_burst      = 5
+# Optional. If omitted, Terraform generates a unique bucket name.
+website_bucket_name = "lyken-prod-frontend-bucket"

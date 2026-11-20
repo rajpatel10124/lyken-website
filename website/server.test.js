@@ -1,0 +1,17 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {createServer,validate,sendEmail}=require('./server');
+const valid={name:'Test Client',email:'test@example.com',company:'Example Co',service:'DevOps & Automation',budget:'',message:'Please help us automate deployments.',website:''};
+async function start(send=async()=>({messageId:'mock-id'})){
+ const server=createServer({send});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const url=`http://127.0.0.1:${server.address().port}`;
+ return {url,close:()=>new Promise(r=>server.close(r))};
+}
+const post=(url,p)=>fetch(url+'/api/contact',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});
+test('validates input',()=>{assert.equal(validate(valid),null);assert.match(validate({...valid,email:'bad'}),/email/);assert.match(validate({...valid,message:'hi'}),/details/);});
+test('all eight pages and favicon load',async()=>{const s=await start();try{for(const f of ['','about.html','services.html','work.html','insights.html','faq.html','contact.html','privacy.html','favicon.svg']){const r=await fetch(s.url+'/'+f);assert.equal(r.status,200,f);assert.ok((await r.text()).length>100);}}finally{await s.close();}});
+test('contact rejects invalid input',async()=>{const s=await start();try{const r=await post(s.url,{...valid,email:'invalid'});assert.equal(r.status,422);assert.equal((await r.json()).ok,false);}finally{await s.close();}});
+test('contact returns configuration error without credentials',async()=>{const s=await start();try{const r=await post(s.url,valid);assert.equal(r.status,503);assert.match((await r.json()).error,/not configured/);}finally{await s.close();}});
+test('contact acknowledges provider acceptance',async()=>{const oldKey=process.env.BREVO_API_KEY,oldSender=process.env.BREVO_SENDER_EMAIL;process.env.BREVO_API_KEY='test-key';process.env.BREVO_SENDER_EMAIL='verified@example.com';let received;const s=await start(async p=>{received=p;return {messageId:'mock-id'}});try{const r=await post(s.url,valid);assert.equal(r.status,200);assert.equal((await r.json()).ok,true);assert.equal(received.email,valid.email);}finally{await s.close();if(oldKey===undefined)delete process.env.BREVO_API_KEY;else process.env.BREVO_API_KEY=oldKey;if(oldSender===undefined)delete process.env.BREVO_SENDER_EMAIL;else process.env.BREVO_SENDER_EMAIL=oldSender;}});
+test('contact reports provider failures without false success',async()=>{process.env.BREVO_API_KEY='test-key';process.env.BREVO_SENDER_EMAIL='verified@example.com';const s=await start(async()=>{throw new Error('provider down')});try{const r=await post(s.url,valid);assert.equal(r.status,502);assert.equal((await r.json()).ok,false);}finally{await s.close();delete process.env.BREVO_API_KEY;delete process.env.BREVO_SENDER_EMAIL;}});
+test('email provider request uses reply-to and private key',async()=>{process.env.BREVO_API_KEY='fake';process.env.BREVO_SENDER_EMAIL='verified@example.com';try{let options;await sendEmail(valid,async(url,opts)=>{assert.equal(url,'https://api.brevo.com/v3/smtp/email');options=opts;return {ok:true,json:async()=>({messageId:'test'})}});const data=JSON.parse(options.body);assert.equal(data.to[0].email,'rajptl244@gmail.com');assert.equal(data.replyTo.email,valid.email);assert.equal(options.headers['api-key'],'fake');}finally{delete process.env.BREVO_API_KEY;delete process.env.BREVO_SENDER_EMAIL;}});

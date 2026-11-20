@@ -1,0 +1,120 @@
+name: Lyken AWS CI-CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lyken-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate code and Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test submit Lambda
+        working-directory: backend/submit_inquiry
+        run: python -m unittest -v
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Format Terraform files
+        run: terraform fmt -recursive terraform
+
+      - name: Validate production Terraform
+        working-directory: terraform/environments/prod
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Validate bootstrap Terraform
+        working-directory: terraform/bootstrap
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  deploy:
+    name: Apply infrastructure and deploy website
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Configure AWS credentials (long-lived keys; no OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform init
+        working-directory: terraform/environments/prod
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=lyken/prod/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Terraform apply
+        working-directory: terraform/environments/prod
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_ses_from_email: ${{ vars.SES_FROM_EMAIL }}
+          TF_VAR_notification_to_email: ${{ vars.NOTIFICATION_TO_EMAIL }}
+        run: terraform apply -auto-approve
+
+      - name: Read deployment outputs
+        id: outputs
+        working-directory: terraform/environments/prod
+        run: |
+          echo "bucket=$(terraform output -raw website_bucket_name)" >> "$GITHUB_OUTPUT"
+          echo "distribution=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
+          echo "url=$(terraform output -raw website_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload static website
+        env:
+          WEBSITE_BUCKET: ${{ steps.outputs.outputs.bucket }}
+        run: |
+          test -f website/index.html
+          aws s3 sync website/ "s3://${WEBSITE_BUCKET}/" --delete
+
+      - name: Invalidate CloudFront
+        env:
+          DISTRIBUTION_ID: ${{ steps.outputs.outputs.distribution }}
+        run: aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+
+      - name: Deployment summary
+        env:
+          WEBSITE_URL: ${{ steps.outputs.outputs.url }}
+        run: 'echo "Website deployment submitted: ${WEBSITE_URL}" >> "$GITHUB_STEP_SUMMARY"'
